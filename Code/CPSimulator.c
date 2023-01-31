@@ -76,8 +76,8 @@ time_t val_left_t;			// Time of left the valets
 time_t monitor_exit_t;		// Time of left the monitor
 time_t stop_t;				// Simulator end time
 
-void* out_valet_func(void*);
-void* in_valet_func(void*);
+void* out_valet_func(void* arg);
+void* in_valet_func(void* arg);
 void testCP();
 int poissonRandom(double);
 
@@ -91,13 +91,13 @@ void* monitor_func(void* arg) {
         // sleep(rand() % 10 + 1);
         sleep(2);
         // Acquire the lock
-        pthread_mutex_lock(&park_lock);
+        // pthread_mutex_lock(&park_lock);
         // Print and display the status of the car park
-        printf("Spots: []\n");
+        // printf("Spots: []\n");
         // Update the graphical display
         // show();
         // Release the lock 
-        pthread_mutex_unlock(&park_lock);
+        // pthread_mutex_unlock(&park_lock);
     }
 }
 
@@ -136,10 +136,28 @@ void cancel_threads() {
 
     pthread_cancel(monitor_thread_id);
     pthread_cancel(car_gen_thread_id);
-    printf("CANCELED");
+    printf("CANCELED\n");
 }
 
-/* Signal handler for SIGTERM */
+/* Signal handler for KILL */
+void sigterm_kill(int signo) {
+    finish();
+
+    /** Calculate and print statistics **/
+    PrintStatistics();
+
+    // Cleanup and exit
+    Qfree();
+    // Free memory and destroy the lock
+    free(parking_array);
+    pthread_mutex_destroy(&park_lock);
+    pthread_cond_destroy(&arrival_cond);
+    pthread_cond_destroy(&departure_cond);
+
+    exit(0);
+}
+
+/* Signal handler for Ctrl^C */
 void sigterm_handler(int signo) {
     received_sgnl_t = time(NULL);
     stop_t = time(NULL);
@@ -171,9 +189,11 @@ void sigterm_handler(int signo) {
 
 /* Thread function for in-valets */
 void* in_valet_func(void* arg) {
+    int id = *(int*)arg;
     while (1) {
         /* Wait for a car to arrive */
         pthread_mutex_lock(&park_lock);
+        printf("in valet %d aquired lock\n", id);
         while (1 == 0) {
             pthread_cond_wait(&arrival_cond, &park_lock);
         }
@@ -181,18 +201,23 @@ void* in_valet_func(void* arg) {
         // car_park.num_arrivals--;
         // car_park.num_available--;
         pthread_mutex_unlock(&park_lock);
+        printf("in valet %d released lock\n", id);
         /* Pause for a random period before and after parking the car */
-        sleep(rand() % 1000 + 1);
+        sleep(rand() % 10000 + 1);
         /* Pause for a random period in the critical section */
         usleep(rand() % 200000 + 1);
     }
+    free(arg);
+    pthread_exit(0);
 }
 
 /* Thread function for out-valets */
-void* out_valet_func(void* arg) {
+void *out_valet_func(void* arg) {
+    int id = *(int*)arg;
     while (1) {
         /* Wait for a car to arrive */
         pthread_mutex_lock(&park_lock);
+        printf("out valet %d aquired lock\n", id);
         while (1 == 0) {
             pthread_cond_wait(&arrival_cond, &park_lock);
         }
@@ -200,11 +225,14 @@ void* out_valet_func(void* arg) {
         // car_park.num_arrivals--;
         // car_park.num_available--;
         pthread_mutex_unlock(&park_lock);
+        printf("out valet %d released lock\n", id);
         /* Pause for a random period before and after parking the car */
         sleep(rand() % 1000 + 1);
         /* Pause for a random period in the critical section */
         usleep(rand() % 200000 + 1);
     }
+    free(arg);
+    pthread_exit(0);
 }
 
 
@@ -287,8 +315,8 @@ int main(int argc, char* argv[]) {
     sleep(1);
 
     // Set up the signal handler for SIGTERM to abort program
-    signal(SIGTERM, sigterm_handler);
     signal(SIGINT, sigterm_handler);
+    signal(SIGTERM, sigterm_kill);
 
     // Get the default attributes for threads
 	pthread_attr_t attr;
@@ -296,34 +324,53 @@ int main(int argc, char* argv[]) {
 
     // Create the monitor thread
     pthread_t monitor_thread;
-    pthread_create(&monitor_thread, &attr, monitor_func, NULL);
+    if (pthread_create(&monitor_thread, &attr, monitor_func, NULL) != 0) {
+        printf("Failed to Create Monitor Thread");
+        return 1;
+    }
     monitor_thread_id = monitor_thread;
 
     // Create and start the valet threads
     pthread_t in_valet_threads[inval];
     for(int i = 0; i < inval; i++) {
-        pthread_create(&in_valet_threads[i], &attr, in_valet_func, NULL);
+        int* id = malloc(sizeof(int));
+        *id = i+1;
+        if (pthread_create(&in_valet_threads[i], &attr, in_valet_func, id) != 0) {
+            printf("Failed to Create In Valet Thread #%d", *id);
+            return 1;
+        }
     }
     in_valet_threads_id = in_valet_threads;
 
     pthread_t out_valet_threads[outval];
     for(int i = 0; i < outval; i++) {
-        pthread_create(&out_valet_threads[i], &attr, out_valet_func, NULL);
+        int* id = malloc(sizeof(int));
+        *id = i+1;
+        if (pthread_create(&out_valet_threads[i], &attr, out_valet_func, id) != 0) {
+            printf("Failed to Create Out Valet Thread #%d", *id);
+            return 1;
+        }
     }
     out_valet_threads_id = out_valet_threads;
 
     // Create the car generator thread
     pthread_t car_gen_thread;
-    pthread_create(&car_gen_thread, &attr, car_gen_func, NULL);
+    if (pthread_create(&car_gen_thread, &attr, car_gen_func, NULL) !=0) {
+        printf("Failed to Create Car Generator Thread");
+        return 1;
+    }
     car_gen_thread_id = car_gen_thread;
 
-
+    if (pthread_join(car_gen_thread, NULL) != 0) {
+        printf("Finished Simulation");
+        return 2;
+    }
 	// stop_t = time(NULL);
 	// val_leav_t = time(NULL);
-    while (1) {
+    // while (1) {
 
-        sleep(5);
-        printf("HHHH\n");
+        // sleep(5);
+        // printf("HHHH\n");
         // Generate an incoming car with a Poisson distribution 
         // double arrival_time = -logf(1.0f - (float)rand() / RAND_MAX) / arrival_rate;
         // sleep((int)arrival_time);
@@ -336,10 +383,10 @@ int main(int argc, char* argv[]) {
         // / Refuse service and send the car away */
         // }
         // pthread_mutex_unlock(&park_lock);
-    }
+    // }
 
 
-    printf("CRASH!");
+    // printf("CRASH!");
     // return 0;
     // testCP();
 }
