@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <time.h>
 #include <SDL2/SDL.h>
@@ -39,14 +40,19 @@ double expnum_arg;
 // Car** car_park;
 // Queue* queue;
 
+// The pthread structures
+
 pthread_t *in_valet_threads_id;
 pthread_t *out_valet_threads_id;
 pthread_t monitor_thread_id;
 pthread_t car_gen_thread_id;
 
-pthread_mutex_t park_lock;
-pthread_cond_t arrival_cond;
-pthread_cond_t departure_cond;
+
+sem_t empty;			// Counting semaphore for waiting while the parking is empty to avoid the busy-waiting.
+// sem_t full;				// Counting semaphore for waiting while the parking is full to avoid the busy-waiting.
+pthread_mutex_t park_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t arrival_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t departure_cond = PTHREAD_COND_INITIALIZER;
 Car** parking_array;
 
 /* Statistical Variables
@@ -141,18 +147,36 @@ void cancel_threads() {
 
 /* Signal handler for KILL */
 void sigterm_kill(int signo) {
-    finish();
+    // cancel_threads();
+    // finish();
 
-    /** Calculate and print statistics **/
-    PrintStatistics();
+    printf("YOU KILL ME!?");
 
     // Cleanup and exit
-    Qfree();
+    // Qfree();
     // Free memory and destroy the lock
-    free(parking_array);
-    pthread_mutex_destroy(&park_lock);
-    pthread_cond_destroy(&arrival_cond);
-    pthread_cond_destroy(&departure_cond);
+    // free(parking_array);
+    // pthread_mutex_destroy(&park_lock);
+    // pthread_cond_destroy(&arrival_cond);
+    // pthread_cond_destroy(&departure_cond);
+
+    exit(0);
+}
+
+/* Signal handler for QUIT */
+void sigterm_quit(int signo) {
+    // cancel_threads();
+    // finish();
+
+    printf("YOU QUITTER!");
+
+    // Cleanup and exit
+    // Qfree();
+    // Free memory and destroy the lock
+    // free(parking_array);
+    // pthread_mutex_destroy(&park_lock);
+    // pthread_cond_destroy(&arrival_cond);
+    // pthread_cond_destroy(&departure_cond);
 
     exit(0);
 }
@@ -183,6 +207,7 @@ void sigterm_handler(int signo) {
     pthread_mutex_destroy(&park_lock);
     pthread_cond_destroy(&arrival_cond);
     pthread_cond_destroy(&departure_cond);
+    sem_post(&empty);
 
     exit(0);
 }
@@ -191,17 +216,57 @@ void sigterm_handler(int signo) {
 void* in_valet_func(void* arg) {
     int id = *(int*)arg;
     while (1) {
-        /* Wait for a car to arrive */
-        pthread_mutex_lock(&park_lock);
-        printf("in valet %d aquired lock\n", id);
-        while (1 == 0) {
+        /* Wait for a car to arrive */ 
+        // printf("in valet %d checks Q %d\n", id, QisEmpty());
+        // printf("in valet %d size Q %d\n", id, Qsize());
+        while (QisEmpty()) {
+            sleep((rand() % 20)/100.0);	// get a random value between 0 and 0.2
+            // printf("in valet %d in arrival COND\n", id);
             pthread_cond_wait(&arrival_cond, &park_lock);
+            // printf("singaled valet %d in arrival COND\n", id);
         }
+        // printf("in valet %d out arrival COND\n", id);
+        Car* carToServe = Qserve();
+        setViState(id, FETCH);
+        float rd = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
+		sleep(rd);
+		setViCar(id, carToServe);
+        carToServe->vid = id;
+        printf("in valet %d fetched car\n", id);
+        sleep((rand() % 200)/100.0);	// get a random value between 0 and 0.2
+
+        // TODO: TAMMAM
+        setViState(id, WAIT);
+        while (QisEmpty) {
+            float rd = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
+			sleep(rd);
+            // sem_wait(&empty);
+            pthread_cond_wait(&departure_cond, &park_lock);
+        }
+        // TODO: TAMMAM
+        pthread_mutex_lock(&park_lock);
+        float rd_wt = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
+		sleep(rd_wt);
+
+        setViState(id, MOVE);
+		nm++; // The number of cars currently acquired by in-valets
+		pk++; // Running total number of cars allowed to park
+		float rd_pk = (rand() % 100)/100.0; // get a random value between 0 and 1
+		sleep(rd_pk);
+
+        (*carToServe).ptm = current_t;	
+        sqw = sqw + (carToServe->ptm - carToServe->atm);
+
+        printf("in valet %d aquired lock\n", id);
         /* Park the car */
-        // car_park.num_arrivals--;
-        // car_park.num_available--;
+        /* TODO: TAMMAM */
         pthread_mutex_unlock(&park_lock);
         printf("in valet %d released lock\n", id);
+        // carToServe->sno = the park slot from array TAMMMAM
+
+        sleep((rand() % 20)/100.0);			// get a random value between 0 and 0.2
+		setViState(id, READY);
+		nm--;
         /* Pause for a random period before and after parking the car */
         sleep(rand() % 10000 + 1);
         /* Pause for a random period in the critical section */
@@ -215,7 +280,17 @@ void* in_valet_func(void* arg) {
 void *out_valet_func(void* arg) {
     int id = *(int*)arg;
     while (1) {
-        /* Wait for a car to arrive */
+        setVoState(id, WAIT);
+
+        /* Wait for a park spot */
+        // TAMMAM PARK SIZE
+        // while (park is full) {
+            // sleep((rand() % 20)/100.0)
+            // pthread_cond_wait(&deppart_cond, &park_lock);
+        // }
+
+        sleep((rand() % 20)/100.0);
+
         pthread_mutex_lock(&park_lock);
         printf("out valet %d aquired lock\n", id);
         while (1 == 0) {
@@ -226,6 +301,8 @@ void *out_valet_func(void* arg) {
         // car_park.num_available--;
         pthread_mutex_unlock(&park_lock);
         printf("out valet %d released lock\n", id);
+        oc--;
+        setVoState(id, READY);
         /* Pause for a random period before and after parking the car */
         sleep(rand() % 1000 + 1);
         /* Pause for a random period in the critical section */
@@ -294,19 +371,20 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    printf("Car park size: %d\n", psize);
-    printf("Number of in valets: %d\n", inval);
-    printf("Number of out valets: %d\n", outval);
-    printf("Queue size: %d\n", qsize);
-    printf("Expected number of cars: %f\n", expnum);
+    // printf("Car park size: %d\n", psize);
+    // printf("Number of in valets: %d\n", inval);
+    // printf("Number of out valets: %d\n", outval);
+    // printf("Queue size: %d\n", qsize);
+    // printf("Expected number of cars: %f\n", expnum);
     
     // Initialize the car park and its components
-    parking_array = malloc(psize * sizeof(Car*));
     // int parkings_size;
     // parking_array = PQiterator(&parkings_size);
+    parking_array = malloc(psize * sizeof(Car*));
     pthread_mutex_init(&park_lock, NULL);
-    pthread_cond_init(&arrival_cond, NULL);
-    pthread_cond_init(&departure_cond, NULL);  
+    // pthread_cond_init(&arrival_cond, NULL);
+    // pthread_cond_init(&departure_cond, NULL);  
+    sem_init(&empty, 0, psize);
 
     Qinit(qsize);
     printf("Queue initialized with capacity of %d\n", Qcapacity());
@@ -316,7 +394,8 @@ int main(int argc, char* argv[]) {
 
     // Set up the signal handler for SIGTERM to abort program
     signal(SIGINT, sigterm_handler);
-    signal(SIGTERM, sigterm_kill);
+    signal(SIGQUIT , sigterm_quit);
+    signal(SIGKILL , sigterm_kill);
 
     // Get the default attributes for threads
 	pthread_attr_t attr;
@@ -334,7 +413,7 @@ int main(int argc, char* argv[]) {
     pthread_t in_valet_threads[inval];
     for(int i = 0; i < inval; i++) {
         int* id = malloc(sizeof(int));
-        *id = i+1;
+        *id = i;
         if (pthread_create(&in_valet_threads[i], &attr, in_valet_func, id) != 0) {
             printf("Failed to Create In Valet Thread #%d", *id);
             return 1;
@@ -345,7 +424,7 @@ int main(int argc, char* argv[]) {
     pthread_t out_valet_threads[outval];
     for(int i = 0; i < outval; i++) {
         int* id = malloc(sizeof(int));
-        *id = i+1;
+        *id = i;
         if (pthread_create(&out_valet_threads[i], &attr, out_valet_func, id) != 0) {
             printf("Failed to Create Out Valet Thread #%d", *id);
             return 1;
@@ -415,8 +494,11 @@ void* car_gen_func(void* arg) {
 			if (!QisFull()){
 				CarInit(car);	// init. a car 
 				nc++;			// this car is allowed to park
-				Qenqueue(car);	// the car enqueued
+                Qenqueue(car);	// the car enqueued
+                pthread_cond_signal(&arrival_cond);
+                printf("SIGNALLED\n");
             } else {
+                pthread_cond_signal(&arrival_cond);
 				rf++;			// this car is not allowed to park
 			}
 			float rd = (rand() % 20)/100.0;	// get a random value between 0 and 0.2

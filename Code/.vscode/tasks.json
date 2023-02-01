@@ -7,11 +7,13 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
-                "-pthread",
                 "${file}",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}",
-                "-lSDL2", "-lSDL2_image", "-lSDL_bgi"
+                "${fileDirname}/CarPark.o",
+                "${fileDirname}/Queue.o",
+                "-pthread",
+                "-lSDL2", "-lSDL2_image", "-lSDL_bgi", "-lm"
             ],
             "options": {
                 "cwd": "${fileDirname}"
