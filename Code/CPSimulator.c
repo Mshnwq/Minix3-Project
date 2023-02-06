@@ -70,7 +70,7 @@ long spt= 0; 	// Running sum of car-parking durations
 double ut = 0; 	// Current car-park space utilization
 
 /* Time Variables
-* TODO
+* TODO TAMMAM
 * 	These variables will be used to print the times in the simulator's final report.
 */ 
 time_t current_t;			// The current time of each loop in the monitor thread
@@ -97,13 +97,13 @@ void* monitor_func(void* arg) {
         // sleep(rand() % 10 + 1);
         sleep(2);
         // Acquire the lock
-        // pthread_mutex_lock(&park_lock);
-        // Print and display the status of the car park
+        pthread_mutex_lock(&park_lock);
+        // Print and display the status of the car park TAMMAM
         // printf("Spots: []\n");
         // Update the graphical display
-        // show();
+        show();
         // Release the lock 
-        // pthread_mutex_unlock(&park_lock);
+        pthread_mutex_unlock(&park_lock);
     }
 }
 
@@ -371,15 +371,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // printf("Car park size: %d\n", psize);
-    // printf("Number of in valets: %d\n", inval);
-    // printf("Number of out valets: %d\n", outval);
-    // printf("Queue size: %d\n", qsize);
-    // printf("Expected number of cars: %f\n", expnum);
+    printf("Car park size: %d\n", psize);
+    printf("Number of in valets: %d\n", inval);
+    printf("Number of out valets: %d\n", outval);
+    printf("Queue size: %d\n", qsize);
+    printf("Expected number of cars: %f\n", expnum);
     
     // Initialize the car park and its components
     // int parkings_size;
-    // parking_array = PQiterator(&parkings_size);
+    // parking_array = PQiterator(&parkings_size); // TODO TAMMAM
     parking_array = malloc(psize * sizeof(Car*));
     pthread_mutex_init(&park_lock, NULL);
     // pthread_cond_init(&arrival_cond, NULL);
@@ -513,6 +513,9 @@ void* car_gen_func(void* arg) {
 }
 
 void testCP() {
+    // /* TEST SCRIPT FOR QUEUE
+	// * 	TAMMAM MAYBE YOU CAN TRY TO TEST YOUR PARK STRUCTURE HERE
+	// */
     // Create a car and enqueue it
     Car car1;
     CarInit(&car1);
