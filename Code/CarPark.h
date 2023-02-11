@@ -10,8 +10,12 @@
  * Version 2.00 2022/02/20
  *
  */
-#include "Queue.h"					// Provides FIFO Queue-type structure
 
+#include "Queue.h"					// Provides FIFO Queue-type structure
+#include "pQueue.h"					// Provides FIFO Queue-type structure
+// #include "Car.h"
+// #ifndef CAR_H
+// #define CAR_H
 /* =============================================================================
  * Do not change the following constants, they provide default values and
  * definitons required by the graphical dispay.
@@ -101,4 +105,5 @@ void finish();
  * =============================================================================
  */
 int newCars (double ex);
+// #endif
 

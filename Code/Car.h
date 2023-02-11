@@ -17,6 +17,8 @@
  * Version 2.00 2022/02/20
  *
  */
+#ifndef CAR_H
+#define CAR_H
 typedef struct Car_t {
 	int cid;				// The car's unique ID
 	int vid;				// The in-valet's ID
@@ -28,6 +30,7 @@ typedef struct Car_t {
 	char pnf[20];			// The car's flipped-image file name
 } Car;
 
+// Car Car_H;
 /* =============================================================================
  * CarInit:
  * Initialize the newly created car passed in the parameter. Before using a new
@@ -45,4 +48,4 @@ typedef struct Car_t {
  * =============================================================================
  */
 void CarInit(Car *car);
-
+#endif

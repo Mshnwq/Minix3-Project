@@ -11,6 +11,7 @@
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}",
                 "${fileDirname}/CarPark.o",
+                "${fileDirname}/parkQ.o",
                 "${fileDirname}/Queue.o",
                 "-pthread",
                 "-lSDL2", "-lSDL2_image", "-lSDL_bgi", "-lm"

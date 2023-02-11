@@ -1,5 +1,5 @@
 /*
- * Queue.h
+ * pQueue.h
  *
  * Header file for a FIFO queue structure using an array of
  * Car-type elements stored in it.
@@ -19,15 +19,15 @@
  * - bool  QisFull()
  * - bool  QisEmpty()
  *
- * Author Dr. Abdulghani M. Al-Qasimi
- * Version 2.00 2022/02/20
+ * Author Tamam Alahdal
+ * Version 3.00 2023/02/9
  *
  */
 
 #include <pthread.h>		// Provides thread-safe mutex lock
 #include <stdbool.h>        // Provides boolean data type
-// #include "CarPark.h"			// Provides the required Car type structure
-#include "Car.h"			// Provides the required Car type structure
+// #include "CarPark.h"
+#include "Car.h"
 // #ifndef CAR_H
 // #define CAR_H
 /* =============================================================================
@@ -41,40 +41,40 @@
  * and ending at the tail without changing the state of the queue.
  * =============================================================================
  */
-typedef struct Queue_t {
+typedef struct pQueue_t {
     Car **data;       		// Array to hold car queue
 	Car **list;				// Array to hold car list
     int capacity;      		// The array (queue) capacity
     int count;              // Number of cars currently in the queue
-    int tail;             	// The queue tail position
-    int head;            	// The queue head position
-} Queue;
+    int front;             	// points to  the last element of the priority queue
+}pQueue;
 
-// Queue q;
+// pQueue parking;
+// Car car;
 /* =============================================================================
  * Initialize the feilds of a Queue structure instance.
  * =============================================================================
  */
-void Qinit(int n);
+void pQinit(int n);
 
 /* =============================================================================
  * Free the Queue data and list arrays.
  * =============================================================================
  */
-void Qfree();
+void pQfree();
 
 /* =============================================================================
  * Clear the Queue.
  * =============================================================================
  */
-void Qclear();
+void pQclear();
 
 /* =============================================================================
  * A FIFO Queue enqueue function.
  * Check precondition Qisfull() = false.
  * =============================================================================
  */
-void Qenqueue(Car *car);
+int pQenqueue(Car *car);
 
 /* ===========================================================================
  * A FIFO Queue delete function.
@@ -82,41 +82,44 @@ void Qenqueue(Car *car);
  * Check precondition QisEmpty = false.
  * ===========================================================================
  */
-Car* Qserve();
+Car* pQserve();
 
 /* ===========================================================================
  * Return the car at the head of the Queue, without deleting it.
  * ===========================================================================
  */
-Car* Qpeek();
+Car* pQpeek();
 
 /* ===========================================================================
  * Return a list of the queue contents and its size.
  * ===========================================================================
  */
-Car** Qiterator(int *sz);
+Car** pQiterator(int *sz);
 
 /* ===========================================================================
  * Return the capacity of the FIFO Queue.
  * ===========================================================================
  */
-int Qcapacity();
+int pQcapacity();
 
 /* ===========================================================================
  * Return the number of cars in the FIFO Queue.
  * ===========================================================================
  */
-int Qsize();
+int pQsize();
 
 /* ===========================================================================
  * Return true if the FIFO Queue is full. Return false otherwise.
  * ===========================================================================
  */
-bool QisFull();
+bool pQisFull();
 
 /* ===========================================================================
  * Return true if the FIFO Queue is empty. Return false otherwise.
  * ===========================================================================
  */
-bool QisEmpty();
+bool pQisEmpty();
+
+
+bool compare(Car* newCar, Car* car1);
 // #endif

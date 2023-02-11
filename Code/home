@@ -10,7 +10,6 @@
 #include <SDL2/SDL_image.h>
 #include "CarPark.h"
 
-
 #define PSIZE_MIN   12			// Minimum capacity of the parking space
 #define PSIZE       16			// Default capacity of the parking space
 #define PSIZE_MAX   40			// Maximum capacity of the parking space
@@ -42,20 +41,19 @@ double expnum_arg;
 // Queue* queue;
 
 // The pthread structures
+
 pthread_t *in_valet_threads_id;     //Thread for in-valet
 pthread_t *out_valet_threads_id;    //thread for out-valet
 pthread_t monitor_thread_id;        //monitor thread
 pthread_t car_gen_thread_id;        //car generation thread
 
 
-sem_t emptySlots;			// Counting semaphore for read/write if the parking is empty to avoid the busy-waiting.
-sem_t haveCars;				// Counting semaphore for read/write if the parking is notfull to avoid the busy-waiting.
+sem_t empty;			// Counting semaphore for waiting while the parking is empty to avoid the busy-waiting.
+// sem_t full;				// Counting semaphore for waiting while the parking is full to avoid the busy-waiting.
 pthread_mutex_t park_lock = PTHREAD_MUTEX_INITIALIZER;      //one car 
 pthread_cond_t arrival_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t departure_cond = PTHREAD_COND_INITIALIZER;
-Car** car_park;
-
-
+Car** parking_array;
 
 /* Statistical Variables
 *
@@ -207,11 +205,11 @@ void sigterm_handler(int signo) {
     // Cleanup and exit
     Qfree();
     // Free memory and destroy the lock
-    // free(parking_array);
+    free(parking_array);
     pthread_mutex_destroy(&park_lock);
     pthread_cond_destroy(&arrival_cond);
     pthread_cond_destroy(&departure_cond);
-    sem_post(&emptySlots);
+    sem_post(&empty);
 
     exit(0);
 }
@@ -233,59 +231,53 @@ void* in_valet_func(void* arg) {
         // printf("in valet %d out arrival COND\n", id);
         Car* carToServe = Qserve(); //pop a car from the queue to the valte
         setViState(id, FETCH);      //set the valte state to "FETCH"
-        nm++; // The number of cars currently acquired by in-valets
-        
-        //simulate the valte time to park the car
-        // get a random value between 0 and 0.2
-		sleep((rand() % 20)/100.0);
-		setViCar(id, carToServe);   //set the valte and the car will park by that valte
-        carToServe->vid = id;       //valte ride the car
+
+        //============simulate the valte time to park the car===================
+        float rd = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
+		sleep(rd);
+		setViCar(id, carToServe);
+        carToServe->vid = id;
         printf("in valet %d fetched car\n", id);
         sleep((rand() % 200)/100.0);	// get a random value between 0 and 0.2
-        //END Simulate valte time of pariking
-
-        // TODO: TAMMAM
-
-        //================ Entry section ===========================
-        setViState(id, WAIT); //waiting to access the park 
-        pk++; // Running total number of cars allowed to park
-
-        printf("in valet %d arrived\n", id);
+        //===================END Simulate valte time of pariking=================
         
-        // while (QisEmpty) {
-        //     float rd = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
-		// 	sleep(rd);
-        //     // sem_wait(&empty);
-        //     pthread_cond_wait(&departure_cond, &park_lock);
-        // }
-        sem_wait(&emptySlots);// wait if no empty slots in the parking, wait here all valet will wait here
-        pthread_mutex_lock(&park_lock); //aquire the lock all valet will compet here to take the lock
-        printf("in valet %d aquired park lock\n", id);
+        // TODO: TAMMAM
+        setViState(id, WAIT);
+        while (QisEmpty) {
+            float rd = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
+			sleep(rd);
+            // sem_wait(&empty);
+            pthread_cond_wait(&departure_cond, &park_lock);
+        }
+        // TODO: TAMMAM
+        pthread_mutex_lock(&park_lock);
+        float rd_wt = (rand() % 20)/100.0;	// get a random value between 0 and 0.2
+		sleep(rd_wt);
 
-        //======================= CS ==================================
-        setViState(id, MOVE); //busy (parking the car)
-        sleep((rand() % 20)/100.0); //simulate the drive of a car untill parking.
-        carToServe->ptm = current_t;  //like (*carToServe).ptm = current_t
+        setViState(id, MOVE);
+		nm++; // The number of cars currently acquired by in-valets
+		pk++; // Running total number of cars allowed to park
+		float rd_pk = (rand() % 100)/100.0; // get a random value between 0 and 1
+		sleep(rd_pk);
 
-        carToServe->sno = pQenqueue(carToServe); // park the car
+        (*carToServe).ptm = current_t;	
+        sqw = sqw + (carToServe->ptm - carToServe->atm);
 
-        sqw = sqw + ((*carToServe).ptm - carToServe->atm); //sum time from arriving untill parking (time in arrival queue for all cars)
-        oc++; //Current number of occupied slots in the parking space.
-        usleep(rand() % 200000 + 1); //simulate the parking time.
-            
-        //================== Exit section ====================================
-        sem_post(&haveCars);
+        printf("in valet %d aquired lock\n", id);
+        /* Park the car */
+        /* TODO: TAMMAM */
         pthread_mutex_unlock(&park_lock);
         printf("in valet %d released lock\n", id);
+        // carToServe->sno = the park slot from array TAMMMAM
 
-        sleep((rand() % 20)/100.0);	//simulte valet return back to the bool		// get a random value between 0 and 0.2
+        sleep((rand() % 20)/100.0);			// get a random value between 0 and 0.2
 		setViState(id, READY);
-		nm--; 
-
+		nm--;
         /* Pause for a random period before and after parking the car */
         sleep(rand() % 10000 + 1);
+        /* Pause for a random period in the critical section */
+        usleep(rand() % 200000 + 1);
     }
-    //why?
     free(arg);
     pthread_exit(0);
 }
@@ -295,42 +287,33 @@ void *out_valet_func(void* arg) {
         //why? *
     int id = *(int*)arg;
     while (1) {
-        //================ Entry section ===================
-        setViState(id, WAIT); //waiting to access the park 
+        setVoState(id, WAIT);
 
-        sem_wait(&haveCars);   //wait if no car in the parking, wait here 
+        /* Wait for a park spot */
+        // TAMMAM PARK SIZE
+        // while (park is full) {
+            // sleep((rand() % 20)/100.0)
+            // pthread_cond_wait(&deppart_cond, &park_lock);
+        // }
+
+        sleep((rand() % 20)/100.0);
+
         pthread_mutex_lock(&park_lock);
-        printf("in valet %d aquired lock\n", id);
-
-        //==================== CS ============================
-        Car* carToServe = pQserve();
-
-        sleep((rand() % 20)/100.0); //simulate the drive of a car untill leaving.
-        carToServe->ptm = current_t;  //like (*carToServe).ptm = current_t
-        if(carToServe){
-            if(carToServe->ltm <= 0){
-                setViState(id, MOVE); 
-                setVoCar(id, carToServe);
-                sleep((rand() % 20)/100.0);	//simulte valet Driving a car	 get a random value between 0 and 0.2
-                spt = spt + (current_t - carToServe->ptm);
-                printf("Out-valet %d: Car at slot %d is leaving car park\n",id,carToServe->sno);
-                free(carToServe);		//free the car
-				oc--;
-                sleep((rand() % 20)/100.0);	//simulte valet Driving a car	 get a random value between 0 and 0.2
-           }
+        printf("out valet %d aquired lock\n", id);
+        while (1 == 0) {
+            pthread_cond_wait(&arrival_cond, &park_lock);
         }
-        carToServe->sno = pQenqueue(carToServe); // park the car
-       
-
-        sqw = sqw + ((*carToServe).ptm - carToServe->atm); //sum time from arriving untill parking (time in arrival queue for all cars)
-        oc++; //Current number of occupied slots in the parking space.
-        usleep(rand() % 200000 + 1); //simulate the parking time.
-            
-        //================== Exit section ====================================
-        printf("out valet %d released lock\n", id);
-    	sem_wait(&emptySlots); //one car left not full
+        /* Park the car */
+        // car_park.num_arrivals--;
+        // car_park.num_available--;
         pthread_mutex_unlock(&park_lock);
+        printf("out valet %d released lock\n", id);
+        oc--;
         setVoState(id, READY);
+        /* Pause for a random period before and after parking the car */
+        sleep(rand() % 1000 + 1);
+        /* Pause for a random period in the critical section */
+        usleep(rand() % 200000 + 1);
     }
     free(arg);
     pthread_exit(0);
@@ -405,30 +388,26 @@ int main(int argc, char* argv[]) {
     // Initialize the car park and its components
     // int parkings_size;
     // parking_array = PQiterator(&parkings_size); // TODO TAMMAM
-    // parking_array = malloc(psize * sizeof(Car*)); // requist memory locatoin for parking cars each slot = car* since the array store cars pointers
+    parking_array = malloc(psize * sizeof(Car*)); // requist memory locatoin for parking cars each slot = car* since the array store cars pointers
     pthread_mutex_init(&park_lock, NULL);
     //====start TAMAM================= for parking space
     pthread_cond_init(&arrival_cond, NULL);     //only one car can arrive
     pthread_cond_init(&departure_cond, NULL);   //only one car can depart
-
     //======END TAMAM=================  for parking space
-    sem_init(&emptySlots, 0, psize);
-    sem_init(&haveCars, 0, 0);
+    sem_init(&empty, 0, psize);
 
     Qinit(qsize); // initialize Q
-    pQinit(qsize); // initialize parking queue
-
     printf("Queue initialized with capacity of %d\n", Qcapacity());
     
-    car_park = pQiterator(&psize);
-    G2DInit(car_park, psize, inval, outval, park_lock);
+    
+    G2DInit(parking_array, psize, inval, outval, park_lock);
     show();
     sleep(1);
 
     // Set up the signal handler for SIGTERM to abort program
     signal(SIGINT, sigterm_handler);
-    signal(SIGQUIT, sigterm_quit);
-    signal(SIGKILL, sigterm_kill);
+    signal(SIGQUIT , sigterm_quit);
+    signal(SIGKILL , sigterm_kill);
 
     // Get the default attributes for threads
 	pthread_attr_t attr;
@@ -671,3 +650,18 @@ void testCP() {
 
     // exit(0);
 }
+
+
+// int poissonRandom(double expectedValue) {
+//     printf("ddddd%f", expectedValue);
+//     int n = 0; //counter of iteration
+//     double limit; 
+//     double x;  //pseudo random number
+//     limit = exp(-expectedValue);
+//     x = rand(); 
+//     while (x > limit) {
+//     n++;
+//     x *= rand();
+//     }
+//     return n;
+// }

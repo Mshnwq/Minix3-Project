@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "Queue.h"
-#ifndef Car_H
-#define Car_H
+#include "Car.h"
+//why?
+// #ifndef Car_H
+// #define Car_H
 
 Queue q;
 pthread_mutex_t lock;
@@ -89,4 +91,4 @@ bool QisFull() {
 bool QisEmpty() {
     return q.count == 0;
 }
-#endif
+// #endif

@@ -3,6 +3,10 @@
   "files.autoSaveDelay": 2000,
   "files.associations": {
     "sdl.h": "c",
-    "sdl_image.h": "c"
+    "sdl_image.h": "c",
+    "car.h": "c",
+    "stdbool.h": "c",
+    "carpark.h": "c",
+    "pqueue.h": "c"
   },
 }
