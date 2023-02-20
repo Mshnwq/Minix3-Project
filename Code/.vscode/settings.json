@@ -7,6 +7,7 @@
     "car.h": "c",
     "stdbool.h": "c",
     "carpark.h": "c",
-    "pqueue.h": "c"
+    // "pqueue.h": "c",
+    "parkarray.h": "c"
   },
 }

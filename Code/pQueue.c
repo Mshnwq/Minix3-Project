@@ -3,10 +3,6 @@
 #include "pQueue.h"
 #include "Car.h"
 
-// #ifndef CAR_H
-// #define CAR_H
-
-
 pQueue parking;
 
 void pQinit(int n) {
@@ -30,61 +26,63 @@ int pQenqueue(Car *newCar) {
     int slotN;
     if (!pQisFull()) {
         int counter = 0;
-        Car* temp = parking.data[counter];
+        Car* temp = parking.list[counter];
         bool notParked = true;
         while(counter < parking.front){
-             if(compare(newCar,temp)){ //if true means the new car has time less then current car
-                parking.data[counter] = newCar;
+             if(compare(newCar, temp)){ //if true means the new car has time less then current car then park
+                parking.list[counter] = newCar;
                 slotN = counter;
                 notParked = false;
-            //shift
+                //shift cars
                 while(counter < parking.front-1){
-                    Car* temp2 = parking.data[++counter];
-                    parking.data[counter] = temp;
+                    Car* temp2 = parking.list[++counter];
+                    parking.list[counter] = temp;
                     temp = temp2;   
-                    free(temp2);
                 }
-                parking.data[parking.front] = temp;
+                parking.list[parking.front] = temp;
                 break;
             }
             else{
-                temp = parking.data[++counter];
+                temp = parking.list[++counter];
             }
         }
         //if new Car have highest ltm then parking will at the front 
         if(notParked){
-            parking.data[parking.front++] = newCar;
+            parking.list[parking.front] = newCar;
+            slotN = parking.front;
         }
-        free(temp);
         parking.count++;
         parking.front++;
+
     }
     return slotN;
 }
 
 Car* pQserve() {
-    Car* car = NULL;
+    Car* car;
+    // printf("car not served yet\n");
     if (!pQisEmpty()) {
-        car = parking.data[--parking.front];
+        // printf("car is served\n");
+        car = parking.list[--parking.front];
+        parking.count--;
     }
     return car;
 }
 
 Car* pQpeek() {
-    Car* car = NULL;
-    if (parking.count > 0) {
-        car = parking.data[parking.front];
+    Car* car;
+    if (!pQisEmpty()) {
+        car = parking.list[parking.front-1];
     }
     return car;
 }
 
 Car** pQiterator(int *sz) {
     int i;
-    for (i = 0; i < parking.count; i++) {
-        parking.list[i] = parking.data[i];
+    *sz = pQcapacity();
+    for (i = 0; i < parking.capacity; i++) {
+        parking.list[i] = parking.list[i];
     }
-    //why?
-    *sz = parking.count;
     return parking.list;
 }
 
@@ -104,12 +102,11 @@ bool pQisEmpty() {
     return parking.count == 0;
 }
 
-bool compare(Car* newCar, Car* car1){
-    if(newCar->ltm < car1->ltm){
+bool compare(Car* newCar, Car* oldCar){
+    if(difftime(newCar->ltm, time(NULL)) > difftime(oldCar->ltm, time(NULL))){
         return true;
     }
     else{
         return false;
     }
 }
-// #endif
