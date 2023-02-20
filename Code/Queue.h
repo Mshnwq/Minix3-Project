@@ -26,7 +26,6 @@
 
 #include <pthread.h>		// Provides thread-safe mutex lock
 #include <stdbool.h>        // Provides boolean data type
-// #include "CarPark.h"			// Provides the required Car type structure
 #include "Car.h"			// Provides the required Car type structure
 // #ifndef CAR_H
 // #define CAR_H

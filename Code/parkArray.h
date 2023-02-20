@@ -7,17 +7,17 @@
  * The following function specifications shall be used to
  * implement the FIFO queue:
  *
- * - void  pQinit(int n)
- * - void  pQfree()
- * - void  pQclear()
- * - void  pQenqueue(Car *car)
- * - Car*  pQserve()
- * - Car*  pQpeek()
- * - Car** pQiterator(int *sz)
- * - int   pQcapacity()
- * - int   pQsize()
- * - bool  pQisFull()
- * - bool  pQisEmpty()
+ * - void  Ainit(int n)
+ * - void  Afree()
+ * - void  Aclear()
+ * - void  Aenqueue(Car *car)
+ * - Car*  Aserve()
+ * - Car*  Apeek()
+ * - Car** Aiterator(int *sz)
+ * - int   Acapacity()
+ * - int   Asize()
+ * - bool  AisFull()
+ * - bool  AisEmpty()
  *
  * Author Tamam Alahdal
  * Version 3.00 2023/02/9
@@ -26,7 +26,6 @@
 
 #include <pthread.h>		// Provides thread-safe mutex lock
 #include <stdbool.h>        // Provides boolean data type
-// #include "CarPark.h"
 #include "Car.h"
 /* =============================================================================
  * FIFO Queue struct holds the queue array and its standard field variables.

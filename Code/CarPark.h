@@ -12,11 +12,7 @@
  */
 
 #include "Queue.h"					// Provides FIFO Queue-type structure
-// #include "pQueue.h"					// Provides FIFO Queue-type structure
 #include "parkArray.h"
-// #include "Car.h"
-// #ifndef CAR_H
-// #define CAR_H
 /* =============================================================================
  * Do not change the following constants, they provide default values and
  * definitons required by the graphical dispay.

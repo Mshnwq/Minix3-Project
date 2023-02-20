@@ -1,0 +1,12 @@
+{
+  "files.autoSave":"afterDelay",
+  "files.autoSaveDelay": 2000,
+  "files.associations": {
+    "sdl.h": "c",
+    "sdl_image.h": "c",
+    "car.h": "c",
+    "stdbool.h": "c",
+    "carpark.h": "c",
+    "parkarray.h": "c"
+  },
+}

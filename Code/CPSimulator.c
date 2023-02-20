@@ -54,6 +54,7 @@ pthread_mutex_t park_lock;          // Park Mutex
 sem_t P_emptySlots;			        // Counting semaphore for read/write if the parking is empty to avoid the busy-waiting.
 sem_t P_haveCars;			        // Counting semaphore for read/write if the parking is notfull to avoid the busy-waiting.
 
+pthread_cond_t outVcond;
 sem_t Q_emptyQueue;                 // Counting semaphore for read/write if the queue is empty to avoid the busy-waiting.
 sem_t Q_haveCars;                   // Counting semaphore for read/write if the queue is notfull to avoid the busy-waiting.
 
@@ -92,7 +93,6 @@ void* in_valet_func(void* arg);
 void* car_gen_func(void*);
 void* monitor_func(void*);
 
-void testCP();
 // Helper functions
 void PrintStatistics();
 void cancel_threads();
@@ -100,60 +100,8 @@ void sigterm_quit(int signo);
 void sigterm_handler(int signo);
 
 
-/* Thread function for the monitor */
-void* monitor_func(void*) {
-	Car **car_park;
-	time_t prev_t = time(NULL);
-	while(1){
-		current_t = time(NULL);
-		pthread_mutex_lock(&park_lock);			// Lock the arrival queue
-		// === Enter CS for park ====
-        car_park = Aiterator(&psize);	        // get an array of acrs in the parking
-		int duration = current_t - prev_t;		// calculate the time from the last iteration
-		/* Print and update the state of the parking */
-		printf("Monitor: Number of cars in carpark: %d\n", Asize());
-		printf("Slot:\t|");
-		for (int i = 0; i < psize; i++){
-			printf("%d\t|",i+1);
-		}
-		printf("\n\t|");
-		for (int i = 0; i < psize; i++){
-			printf("\t|");
-		}
-		printf("\nPark:\t|");
-		for (int i = 0; i < psize; i++) {
-			if (car_park[i]) {
-				printf("%d\t|",car_park[i]->cid);
-			}
-			else printf("%d\t|",0);
-		}
-        printf("\n\t|");
-		for (int i = 0; i < psize; i++){
-			printf("\t|");
-		}
-        printf("\nTime:\t|");
-        for (int i = 0; i < psize; i++) {
-			if (car_park[i]) {
-				printf("%d\t|",(int)difftime(car_park[i]->ltm, time(NULL)));
-			}
-			else printf("%d\t|",0);
-		}
-		printf("\n");
-		sleep((rand() % 20)/100.0);              // get a random value between 0 and 0.2
-		// === Exit CS for park ====
-        pthread_mutex_unlock(&park_lock);		 // Unlock the arrival queue
-		printf("-------------------------------------------------------------------\n");
-		prev_t = current_t;
-        times_monitored++;
-        // Calculate the utilization as a percentage
-        ut = (double) Asize() / (double) Acapacity() * 100.0;
-        tot_ut += ut; // add to total utilization for finding average utilization later
-        updateStats(oc, nc, pk, rf, nm, sqw, spt, ut);
-		show();
-        sleep(1);
-    }
-}
 
+/* print statistics helper function */
 void PrintStatistics() {
 	printf("\n  Simulator started at:\t\t%s", ctime(&start_t));
 	printf("  Park Space Capacity was:\t%d\n", psize);
@@ -177,6 +125,7 @@ void PrintStatistics() {
 	printf("  Percentage of average park utilization:\t%.2f%%\n\n", tot_ut/(float)times_monitored);
 }
 
+/* cancel thread helper function */
 void cancel_threads() {
 
     for(int i = 0; i< inval; i++){
@@ -225,7 +174,7 @@ void sigterm_handler(int signo) {
     sem_destroy(&P_emptySlots);
     sem_destroy(&P_haveCars);
     sem_destroy(&Q_haveCars);
-    
+    pthread_cond_destroy(&outVcond);
     // exit
     printf("%s:\t CarPark exits.\n", strtok(ctime(&exit_t), "\n"));
     exit(0);
@@ -294,45 +243,131 @@ void *out_valet_func(void* arg) {
     int id = *(int*)arg;
     while (1) {
         sem_wait(&P_haveCars);              //wait if no car in the parking, wait here decrease number of cars in parking
+        pthread_mutex_lock(&park_lock);
+        pthread_cond_wait(&outVcond, &park_lock);
         setVoState(id, WAIT);               //waiting to access the park 
         show();
         sleep(0.01);
-        pthread_mutex_lock(&park_lock);
-        //==================== Enter CS for Park ============================   
-        // Car* checkedCar = pQpeek();
-        Car* checkedCar = Apeek();
-        sleep((rand() % 20)/100.0);        // get a random value between 0 and 0.2
-        // sleep(0.2); //simulate the drive of a car untill leaving.
-        double diff = difftime(checkedCar->ltm, time(NULL));
-        // printf("CAR #%d in slot #%d has time %f\n", checkedCar->cid, checkedCar->sno, diff);
-        if (diff <= 0.0) {
-            setVoState(id, MOVE);
 
-            // Car* carToMove = pQserve(); // remove the car from the park
-            Car* carToMove = Aserve(checkedCar->sno); // remove the car from the park
-            setVoCar(id, carToMove);    // set the car acquired by the out-valet
-            double stayed = difftime(time(NULL), carToMove->ptm);
-            spt += stayed;              // sum time from parking untill exiting
-            // printf("CAR #%d in slot #%d stayed time %f\n", carToMove->cid, carToMove->sno, stayed);
-            // printf("Out-valet %d: Car at slot %d is leaving car park\n", id, carToMove->sno);
-            // Aserve(carToMove->sno);     // remove the car from the array
-            oc--;                       // decrement number of occupied slots in the parking space.
-            sem_post(&P_emptySlots);    // one car left not full Increase empty places
-        }
-        else{
-            sem_post(&P_haveCars);
-        }
+        //==================== Enter CS for Park ============================   
+        Car* checkedCar = Apeek();
+        setVoState(id, MOVE);
+
+        Car* carToMove = Aserve(checkedCar->sno); // remove the car from the park
+        setVoCar(id, carToMove);    // set the car acquired by the out-valet
+        double stayed = difftime(time(NULL), carToMove->ptm);
+        spt += stayed;              // sum time from parking untill exiting
+        oc--;                       // decrement number of occupied slots in the parking space.
+        sem_post(&P_emptySlots);    // one car left not full Increase empty places
         show();
         sleep(0.01);
         //================== Exit CS for Park ====================================
         pthread_mutex_unlock(&park_lock);
-        updateStats(oc, nc, pk, rf, nm, sqw, spt, ut);       
+        updateStats(oc, nc, pk, rf, nm, sqw, spt, ut);  
         setVoState(id, READY); //waiting to access the park 
         show();
         sleep((rand() % 100)/100.0);        // get a random value between 0 and 1
     }
     free(arg);
     pthread_exit(0);
+}
+
+/* Thread function for generating cars */
+void* car_gen_func(void* arg) {
+    /* Start the simulation */ 
+	start_t = time(NULL);
+    double prob = *(double*)arg;
+    // Enter an endless loop where it generates incoming cars 
+	while(1) {
+		int num_cars = newCars(prob);	//generate pseudo random	
+    	pthread_mutex_lock(&queue_lock);  // Lock the arrival queue
+		//===== Enter CS for Queue ====
+        for(int i = 0; i < num_cars; i++) {
+			Car *car = (Car*) malloc(sizeof(Car));	// Allocate memory for new car	// Allocate memory for new car
+			if (!QisFull()){    // this car is allowed to park
+				nc++;			// incerement cars created
+				CarInit(car); 
+                Qenqueue(car);	// enqueue the car
+                sem_post(&Q_haveCars); // post that Q have cars to allow im valet to start their work
+            } else {    // this car is not allowed to park
+				rf++;   // incerement refused cars
+			}
+            // wait before adding the next car
+			updateStats(oc, nc, pk, rf, nm, sqw, spt, ut);
+		    show();
+            sleep((rand() % 20)/100.0);        // get a random value between 0 and 0.2
+		}
+        //===== Exit CS for Queue ====
+        pthread_mutex_unlock(&queue_lock);
+        // wait before generating the next car
+		sleep((rand() % 100)/100.0);        // get a random value between 0 and 0.2
+        
+	}/* End of simulation*/
+    free(arg);
+    pthread_exit(0);
+}
+
+/* Thread function for the monitor */
+void* monitor_func(void*) {
+	Car **car_park;
+	time_t prev_t = time(NULL);
+	while(1){
+		current_t = time(NULL);
+		pthread_mutex_lock(&park_lock);			// Lock the arrival queue
+		// === Enter CS for park ====
+        car_park = Aiterator(&psize);	        // get an array of acrs in the parking
+		int duration = current_t - prev_t;		// calculate the time from the last iteration
+		/* Print and update the state of the parking */
+		printf("Monitor: Number of cars in carpark: %d\n", Asize());
+		printf("Slot:\t|");
+		for (int i = 0; i < psize; i++){
+			printf("%d\t|",i+1);
+		}
+		printf("\n\t|");
+		for (int i = 0; i < psize; i++){
+			printf("\t|");
+		}
+		printf("\nPark:\t|");
+		for (int i = 0; i < psize; i++) {
+			if (car_park[i]) {
+				printf("%d\t|",car_park[i]->cid);
+			}
+			else printf("%d\t|",0);
+		}
+        printf("\n\t|");
+		for (int i = 0; i < psize; i++){
+			printf("\t|");
+		}
+        printf("\nTime:\t|");
+        for (int i = 0; i < psize; i++) {
+			if (car_park[i]) {
+				printf("%d\t|",(int)difftime(car_park[i]->ltm, time(NULL)));
+			}
+			else printf("%d\t|",0);
+		}
+		printf("\n");
+		sleep((rand() % 20)/100.0);              // get a random value between 0 and 0.2
+		// === Exit CS for park ====
+        
+        if(!AisEmpty()){
+        Car* car = Apeek();
+        double diff = difftime(car->ltm, time(NULL));
+        if(diff <= 0)
+            pthread_cond_signal(&outVcond);
+        }
+        // Calculate the utilization as a percentage
+        ut = (double) Asize() / (double) Acapacity() * 100.0;
+
+        pthread_mutex_unlock(&park_lock);		 // Unlock the arrival queue
+		printf("-------------------------------------------------------------------\n");
+		prev_t = current_t;
+        times_monitored++;
+        
+        tot_ut += ut; // add to total utilization for finding average utilization later
+        updateStats(oc, nc, pk, rf, nm, sqw, spt, ut);
+		show();
+        sleep(1);
+    }
 }
 
 
@@ -426,6 +461,9 @@ int main(int argc, char* argv[]) {
     pthread_mutex_init(&park_lock, NULL);
     pthread_mutex_init(&queue_lock, NULL);
 
+    // Initialize cond var
+    pthread_cond_init(&outVcond, NULL);
+
     // Parking Sem
     sem_init(&P_emptySlots, 0, psize);
     sem_init(&P_haveCars, 0, 0);
@@ -433,6 +471,7 @@ int main(int argc, char* argv[]) {
     // Queue Sem
     sem_init(&Q_emptyQueue, 0, qsize);
     sem_init(&Q_haveCars, 0, 0);
+
 
     // Initialize the car park and its components
     Qinit(qsize);   // initialize Queue
@@ -500,176 +539,4 @@ int main(int argc, char* argv[]) {
     // testCP();
 }
 
-void* car_gen_func(void* arg) {
-    /* Start the simulation */ 
-	start_t = time(NULL);
-    double prob = *(double*)arg;
-    // Enter an endless loop where it generates incoming cars 
-	while(1) {
-		int num_cars = newCars(prob);	//generate pseudo random	
-    	pthread_mutex_lock(&queue_lock);  // Lock the arrival queue
-		//===== Enter CS for Queue ====
-        for(int i = 0; i < num_cars; i++) {
-			Car *car = (Car*) malloc(sizeof(Car));	// Allocate memory for new car	// Allocate memory for new car
-			if (!QisFull()){    // this car is allowed to park
-				nc++;			// incerement cars created
-				CarInit(car); 
-                Qenqueue(car);	// enqueue the car
-                sem_post(&Q_haveCars); // post that Q have cars to allow im valet to start their work
-            } else {    // this car is not allowed to park
-				rf++;   // incerement refused cars
-			}
-            // wait before adding the next car
-			updateStats(oc, nc, pk, rf, nm, sqw, spt, ut);
-		    show();
-            sleep((rand() % 20)/100.0);        // get a random value between 0 and 0.2
-		}
-        //===== Exit CS for Queue ====
-        pthread_mutex_unlock(&queue_lock);
-        // wait before generating the next car
-		sleep((rand() % 100)/100.0);        // get a random value between 0 and 0.2
-        
-	}/* End of simulation*/
-    free(arg);
-    pthread_exit(0);
-}
 
-void testCP() {
-    // /* TEST SCRIPT FOR QUEUE
-	// * 	TAMMAM MAYBE YOU CAN TRY TO TEST YOUR PARK STRUCTURE HERE
-	// */
-    // Create a car and enqueue it
-    // Car car1;
-    // car1.ltm =  time(NULL)%100;
-    // car1.cid =  1;
-    // CarInit(&car1);
-    // pQenqueue(&car1);
-    // printf("Car enqueued. Queue size: %d\n", pQsize());
-    // printf("time %d\n", (int) time(NULL));
-
-    // // show();
-    // sleep(2);
-
-    // // Create another car and enqueue it
-    // Car car2;
-    // car2.ltm =  time(NULL)%100;
-    // car2.cid =  2;
-    // CarInit(&car2);
-    // pQenqueue(&car2);
-    // printf("Car enqueued. Queue size: %d\n", pQsize());
-    // printf("time %d\n", (int) time(NULL));
-
-    // // show();
-    // sleep(0.2);
-
-    // // Peek at the head of the queue
-    // Car* car = pQpeek();
-    // printf("Car at the head of the queue: ID=%d, LTM=%d\n", car->cid, (int) car->ltm);
-    // Car* car4 = pQpeek();
-    // printf("Car at the head of the queue: ID=%d, LTM=%d\n", car4->cid, (int) car4->ltm);
-
-    // // show();
-    // Car car3;
-    // car3.ltm =  4;
-    // car3.cid =  3;
-    // CarInit(&car3);
-    // pQenqueue(&car3);
-    // printf("Car enqueued. Queue size: %d\n", pQsize());
-    // printf("time %d\n", (int) time(NULL)-50);
-
-    // Car* carn = pQpeek();
-    // printf("Car at the head of the queue: ID=%d, LTM=%d\n", carn->cid, (int) carn->ltm);
-    // Serve the head of the queue
-    // car = Qserve();
-    // printf("Car served. Queue size: %d\n", Qsize());
-    
-
-    // show();
-    // sleep(0.2);
-
-    // // Create another car and enqueue it
-    // Car car3;
-    // CarInit(&car3);
-    // Qenqueue(&car3);
-    // printf("Car enqueued. Queue size: %d\n", Qsize());
-
-    // show();
-    // sleep(0.2);
-
-    // // Create another car and enqueue it
-    // Car car4;
-    // CarInit(&car4);
-    // Qenqueue(&car4);
-    // printf("Car enqueued. Queue size: %d\n", Qsize());
-
-    // show();
-    // sleep(0.2);
-
-    // // Check if the queue is full
-    // if (QisFull()) {
-    //     printf("Queue is full\n");
-    // } else {
-    //     printf("Queue is not full\n");
-    // }
-
-    // sleep(0.2);
-    // show();
-
-    // // Get an iterator for the queue
-    // int size;
-    // Car** iterator = Qiterator(&size);
-    // printf("Queue contents: \n");
-    // for (int i = 0; i < size; i++) {
-    //     printf("ID=%d, Arrival Time=%ld, Leave Time=%ld, Image Name=%s\n", iterator[i]->cid, iterator[i]->atm, iterator[i]->ltm, iterator[i]->pn);
-    // }
-
-    // sleep(0.2);
-    // show();
-
-    // // Clear the queue
-    // Qclear();
-    // printf("Queue cleared. Queue size: %d\n", Qsize());
-
-    // sleep(0.2);
-    // show();
-
-    // // Check if the queue is empty
-    // if (QisEmpty()) {
-    //     printf("Queue is empty\n");
-    // } else {
-    //     printf("Queue is not empty\n");
-    // }
-
-    // Wait for the user to close the window
-    // SDL_Event event;
-    // int i = 0;
-    // while (i != 5) {
-    //     // float rd = (rand() % 50)/100.0;
-    //     // sleep(rd);
-    //     printf("HI!%d\n", i);
-    //     show();
-	// 	sleep(0.2);
-    //     i++;
-    //     if (SDL_PollEvent(&event) && event.type == SDL_QUIT) {
-    //         printf("CLODS");
-    //         i = 3;
-    //         break;
-    //     }
-    // }
-
-    // printf("END!");
-
-
-    /** Calculate and print statistics **/
-    // PrintStatistics();
-
-    // Cleanup and exit
-
-    // Free memory and destroy the lock
-    // Qfree();
-    // finish();
-    // free(parking_array);
-    // pthread_mutex_destroy(&park_lock);
-
-    // exit(0);
-}
