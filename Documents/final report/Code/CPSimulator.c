@@ -55,7 +55,6 @@ sem_t P_emptySlots;			        // Counting semaphore for read/write if the parkin
 sem_t P_haveCars;			        // Counting semaphore for read/write if the parking is notfull to avoid the busy-waiting.
 
 pthread_cond_t outVcond;
-sem_t Q_emptyQueue;                 // Counting semaphore for read/write if the queue is empty to avoid the busy-waiting.
 sem_t Q_haveCars;                   // Counting semaphore for read/write if the queue is notfull to avoid the busy-waiting.
 
 // Park Array Structure
@@ -81,7 +80,6 @@ int times_monitored = 0;
  *
  * 	These variables will be used to print the times in the simulator's final report.
  */ 
-time_t current_t;			
 time_t start_t;				
 time_t stop_t;				
 time_t received_signal_t;	
@@ -138,7 +136,6 @@ void cancel_threads() {
 
     pthread_cancel(monitor_thread_id);
     pthread_cancel(car_gen_thread_id);
-    // printf("THREADS CANCELED\n");
 } 
 
 /* Signal handler for QUIT */
@@ -164,13 +161,11 @@ void sigterm_handler(int signo) {
     
     // Free Data structures memory
     Qfree();
-    // pQfree();
     Afree();
 
     // Destroy the mutexes & semaphores
     pthread_mutex_destroy(&park_lock);
     pthread_mutex_destroy(&queue_lock);
-    sem_destroy(&Q_emptyQueue);
     sem_destroy(&P_emptySlots);
     sem_destroy(&P_haveCars);
     sem_destroy(&Q_haveCars);
@@ -215,7 +210,7 @@ void* in_valet_func(void* arg) {
         sleep((rand() % 20)/100.0);         // get a random value between 0 and 0.2
         
         carToServe->sno = Aenqueue(carToServe);
-        carToServe->ptm = time(NULL);       //like (*carToServe).ptm = current_t 
+        carToServe->ptm = time(NULL);       //like (*carToServe).ptm
         carToServe->ltm = time(NULL) + rand() % 180;
 
         oc++;   // Current number of occupied slots in the parking space.
@@ -283,7 +278,7 @@ void* car_gen_func(void* arg) {
     	pthread_mutex_lock(&queue_lock);  // Lock the arrival queue
 		//===== Enter CS for Queue ====
         for(int i = 0; i < num_cars; i++) {
-			Car *car = (Car*) malloc(sizeof(Car));	// Allocate memory for new car	// Allocate memory for new car
+			Car *car = (Car*) malloc(sizeof(Car));	// Allocate memory for new car
 			if (!QisFull()){    // this car is allowed to park
 				nc++;			// incerement cars created
 				CarInit(car); 
@@ -310,13 +305,10 @@ void* car_gen_func(void* arg) {
 /* Thread function for the monitor */
 void* monitor_func(void*) {
 	Car **car_park;
-	time_t prev_t = time(NULL);
 	while(1){
-		current_t = time(NULL);
 		pthread_mutex_lock(&park_lock);			// Lock the arrival queue
 		// === Enter CS for park ====
         car_park = Aiterator(&psize);	        // get an array of acrs in the parking
-		int duration = current_t - prev_t;		// calculate the time from the last iteration
 		/* Print and update the state of the parking */
 		printf("Monitor: Number of cars in carpark: %d\n", Asize());
 		printf("Slot:\t|");
@@ -347,7 +339,6 @@ void* monitor_func(void*) {
 		}
 		printf("\n");
 		sleep((rand() % 20)/100.0);              // get a random value between 0 and 0.2
-		// === Exit CS for park ====
         
         if(!AisEmpty()){
         Car* car = Apeek();
@@ -355,12 +346,12 @@ void* monitor_func(void*) {
         if(diff <= 0)
             pthread_cond_signal(&outVcond);
         }
+		// === Exit CS for park ====
         // Calculate the utilization as a percentage
         ut = (double) Asize() / (double) Acapacity() * 100.0;
 
         pthread_mutex_unlock(&park_lock);		 // Unlock the arrival queue
 		printf("-------------------------------------------------------------------\n");
-		prev_t = current_t;
         times_monitored++;
         
         tot_ut += ut; // add to total utilization for finding average utilization later
@@ -469,13 +460,10 @@ int main(int argc, char* argv[]) {
     sem_init(&P_haveCars, 0, 0);
 
     // Queue Sem
-    sem_init(&Q_emptyQueue, 0, qsize);
     sem_init(&Q_haveCars, 0, 0);
-
 
     // Initialize the car park and its components
     Qinit(qsize);   // initialize Queue
-    // pQinit(psize);  // initialize priority Queue
     Ainit(psize);   // initialize Park Array
 
     car_park_array = Aiterator(&psize);
